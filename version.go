@@ -1,2 +1,2 @@
 package hyperarp
-const VERSION="0.0.7"
+const VERSION="0.0.8"

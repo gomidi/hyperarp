@@ -74,6 +74,7 @@ var noteDistanceMap = map[uint8]float64{
 
 // calcNextNote calculates the next note that will be played
 func (a *Arp) calcNextNote() (key, velocity uint8) {
+	//fmt.Printf("calcNextNote\n")
 	a.RLock()
 	dir := a.direction
 	notes := a.notes
@@ -138,9 +139,9 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 		}
 
 		if nextNote > 115 {
-			a.Lock()
+			a.Lock("calcNextNote: switch direction")
 			a.direction = -1
-			a.Unlock()
+			a.Unlock("calcNextNote: switch direction")
 		}
 
 		if nextNote > 127 {
@@ -164,9 +165,9 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 		}
 
 		if nextNote < 12 {
-			a.Lock()
+			a.Lock("calcNextNote: switch direction")
 			a.direction = 1
-			a.Unlock()
+			a.Unlock("calcNextNote: switch direction")
 		}
 
 		if nextNote < 0 {
@@ -202,11 +203,13 @@ type Arp struct {
 	noteDist  chan time.Duration
 	noteLen   chan time.Duration
 	finish    chan bool
+	messages  chan midi.Message
 	isRunning bool
 	//driver midi.Driver
-	in  midi.In
-	out midi.Out
-	wr  *writer.Writer
+	in        midi.In
+	out       midi.Out
+	wr        *writer.Writer
+	transpose int8
 }
 
 type Option func(a *Arp)
@@ -227,6 +230,13 @@ func ChannelIn(ch uint8) Option {
 	}
 }
 
+// Transpose sets the transposition for the midi
+func Transpose(halfnotes int8) Option {
+	return func(a *Arp) {
+		a.transpose = halfnotes
+	}
+}
+
 // ChannelOut sets the midi channel to write to
 func ChannelOut(ch uint8) Option {
 	return func(a *Arp) {
@@ -244,11 +254,12 @@ func New(in midi.In, out midi.Out, opts ...Option) *Arp {
 		notePoolOctave: 0,
 		channelIn:      -1,
 		channelOut:     0,
-		start:          make(chan [2]uint8),
+		start:          make(chan [2]uint8, 100),
 		stop:           make(chan bool),
 		stopped:        make(chan bool),
 		noteDist:       make(chan time.Duration),
 		noteLen:        make(chan time.Duration),
+		messages:       make(chan midi.Message, 100),
 	}
 
 	for _, opt := range opts {
@@ -260,25 +271,25 @@ func New(in midi.In, out midi.Out, opts ...Option) *Arp {
 }
 
 func (a *Arp) Reset() {
-	a.Lock()
+	a.Lock("Reset")
 	a.notes = map[note]bool{}
 	a.noteVelocities = map[note]uint8{}
 	a.tempoBPM = 120.00
 	a.noteDistance = 0.5
 	a.direction = 1
 	a.lastDirectionUp = true
-	a.Unlock()
+	a.Unlock("Reset")
 }
 
 func (a *Arp) SetTempo(bpm float64) {
-	a.Lock()
+	a.Lock("SetTempo")
 	a.tempoBPM = bpm
-	a.Unlock()
+	a.Unlock("SetTempo")
 }
 
 func (a *Arp) SwitchDirection() {
 	//fmt.Println("switching direction")
-	a.Lock()
+	a.Lock("SwitchDirection")
 	if a.lastDirectionUp {
 		a.lastDirectionUp = false
 		a.direction = -1
@@ -286,101 +297,107 @@ func (a *Arp) SwitchDirection() {
 		a.lastDirectionUp = true
 		a.direction = 1
 	}
-	a.Unlock()
+	a.Unlock("SwitchDirection")
 }
 
 func (a *Arp) AddNote(key, velocity uint8) {
-	a.Lock()
+	a.Lock("AddNote")
 	a.notes[note(key%12)] = true
 	a.noteVelocities[note(key%12)] = velocity
-	a.Unlock()
+	a.Unlock("AddNote")
 }
 
 func (a *Arp) SetNoteVelocity(key, velocity uint8) {
-	a.Lock()
+	a.Lock("SetNoteVelocity")
 	a.noteVelocities[note(key%12)] = velocity
-	a.Unlock()
+	a.Unlock("SetNoteVelocity")
 }
 
 func (a *Arp) RemoveNote(key uint8) {
-	a.Lock()
+	a.Lock("RemoveNote")
 	if _, has := a.notes[note(key%12)]; has {
 		delete(a.notes, note(key%12))
 	}
-	a.Unlock()
+	a.Unlock("RemoveNote")
 }
 
 func (a *Arp) StartWithNote(key, velocity uint8) {
-	a.Lock()
+	a.Lock("StartWithNote")
 	a.startingNote = key
 	a.lastNote = key
 	a.startVelocity = velocity
-	a.start <- [2]uint8{key, velocity}
 	a.isRunning = true
-	a.Unlock()
+	a.Unlock("StartWithNote")
+	a.start <- [2]uint8{key, velocity}
+	/*
+		go func(k, v uint8) {
+			a.start <- [2]uint8{k, v}
+		}(key, velocity)
+	*/
 }
 
+// TODO maybe remove
 func (a *Arp) SetStartNoteVelocity(velocity uint8) {
-	a.Lock()
+	a.Lock("SetStartNoteVelocity")
 	a.startVelocity = velocity
-	a.Unlock()
+	a.Unlock("SetStartNoteVelocity")
 }
 
 func (a *Arp) SetStyleStaccato() {
-	a.Lock()
+	a.Lock("SetStyleStaccato")
 	a.style = -1
-	a.Unlock()
+	a.Unlock("SetStyleStaccato")
 	a.calcNoteLen()
 }
 
 func (a *Arp) SetStyleNonLegato() {
-	a.Lock()
+	a.Lock("SetStyleNonLegato")
 	a.style = 0
-	a.Unlock()
+	a.Unlock("SetStyleNonLegato")
 	a.calcNoteLen()
 }
 
 func (a *Arp) SetStyleLegato() {
-	a.Lock()
+	a.Lock("SetStyleLegato")
 	a.style = 1
-	a.Unlock()
+	a.Unlock("SetStyleLegato")
 	a.calcNoteLen()
 }
 
 func (a *Arp) SetSwing(percent float32) {
 	// TODO implement
-	a.Lock()
+	a.Lock("SetSwing")
 	a.swing = percent
-	a.Unlock()
+	a.Unlock("SetSwing")
 }
 
 func (a *Arp) SetNoteDistance(dist float64) {
-	a.Lock()
+	a.Lock("SetNoteDistance")
 	a.noteDistance = dist
-	a.Unlock()
+	a.Unlock("SetNoteDistance")
 	a.calcNoteDistance()
 	a.calcNoteLen()
 }
 
 func (a *Arp) WriteNoteOn(key, velocity uint8) error {
-	a.Lock()
+	//fmt.Printf("before write noteon %v\n", key)
+	a.Lock("WriteNoteOn")
 	a.lastNote = key
+	a.Unlock("WriteNoteOn")
 	err := writer.NoteOn(a.wr, key, velocity)
-	a.Unlock()
+	//fmt.Printf("after write noteon %v\n", key)
 	return err
 }
 
 func (a *Arp) WriteNoteOff(key uint8) error {
-	a.Lock()
+	//fmt.Printf("before write noteoff %v\n", key)
 	err := writer.NoteOff(a.wr, key)
-	a.Unlock()
+	//fmt.Printf("after write noteoff %v\n", key)
 	return err
 }
 
 func (a *Arp) WriteMsg(msg midi.Message) error {
-	a.Lock()
 	err := a.wr.Write(msg)
-	a.Unlock()
 	return err
 }
 
@@ -450,23 +467,220 @@ func (a *Arp) play() (finish chan bool) {
 				stopped = false
 			default:
 				if !stopped {
+					//fmt.Printf("write note on for key %v\n", key)
 					a.WriteNoteOn(key, velocity)
 					wg.Add(1)
 					go func(k uint8, l time.Duration) {
 						time.Sleep(l)
 						//fmt.Printf("send note off for key %v\n", k)
 						a.WriteNoteOff(k)
+						//fmt.Printf("after note off for key %v\n", k)
 						wg.Done()
+						//fmt.Printf("after done for key %v\n", k)
 					}(key, noteLen)
+					//fmt.Printf("before calcNextNote\n")
 					key, velocity = a.calcNextNote()
+					time.Sleep(noteDist)
 				}
-				time.Sleep(noteDist)
+				//fmt.Printf("sleeping %v\n", noteDist)
 			}
 		}
 
 	}()
 
 	return
+}
+
+type writeWrapper struct {
+	midi.Out
+	sync.Mutex
+}
+
+func (w *writeWrapper) Write(b []byte) (int, error) {
+	//fmt.Printf("before writing %v\n", b)
+	w.Lock()
+	i, err := w.Out.Write(b)
+	w.Unlock()
+	//fmt.Printf("after writing %v\n", b)
+	return i, err
+}
+
+func (a *Arp) Lock(by string) {
+	//fmt.Println("locking by " + by)
+	a.RWMutex.Lock()
+}
+
+func (a *Arp) RLock() {
+	//fmt.Println("rlocking")
+	a.RWMutex.RLock()
+}
+
+func (a *Arp) Unlock(by string) {
+	//fmt.Println("unlocking by " + by)
+	a.RWMutex.Unlock()
+}
+
+func (a *Arp) RUnLock() {
+	//fmt.Println("runlocking")
+	a.RWMutex.RUnlock()
+}
+
+func (a *Arp) handleMessage(msg midi.Message) {
+	if chMsg, isCh := msg.(channel.Message); isCh {
+		if a.channelIn >= 0 && uint8(a.channelIn) != chMsg.Channel() {
+			a.WriteMsg(msg) // pass through
+			return
+		}
+
+		switch v := msg.(type) {
+		case channel.NoteOn:
+			if v.Key()/12 == a.notePoolOctave {
+				if v.Velocity() > 0 {
+					a.AddNote(v.Key()%12, v.Velocity())
+				} else {
+					a.RemoveNote(v.Key() % 12)
+				}
+			} else {
+				if v.Velocity() > 0 {
+					a.StartWithNote(v.Key(), v.Velocity())
+				} else {
+					a.Stop()
+				}
+			}
+		case channel.NoteOff:
+			if v.Key()/12 == a.notePoolOctave {
+				a.RemoveNote(v.Key() % 12)
+			} else {
+				a.Stop()
+			}
+		case channel.NoteOffVelocity:
+			if v.Key()/12 == a.notePoolOctave {
+				a.RemoveNote(v.Key() % 12)
+			} else {
+				a.Stop()
+			}
+		case channel.ControlChange:
+			switch v.Controller() {
+			case cc.GeneralPurposeButton1Switch: // direction
+				switch v.Value() {
+				//case 127:
+				//	a.SetDirectionRepeat()
+				case 0:
+					a.SwitchDirection()
+				default:
+					// ignore
+				}
+			case cc.GeneralPurposeSlider1: // note distance
+				// TODO maybe that is better served by special note to distance mapping in fixed steps
+				// e.g. 1/4, 1/8, 1/16, tripplets etc. could also be mapped to program changes (but they could also be interesting for the instruments behind)
+				dist := noteDistanceMap[v.Value()%12]
+				if dist == 0.0 {
+					dist = 1.0
+				}
+				fmt.Printf("setting note distance to %v (%v)\n", dist, v.Value())
+				a.SetNoteDistance(dist)
+			case cc.GeneralPurposeSlider2: // style
+				switch {
+				case v.Value() < 11:
+					a.SetStyleStaccato()
+				case v.Value() > 116:
+					a.SetStyleLegato()
+				default:
+					a.SetStyleNonLegato()
+				}
+				fmt.Printf("setting style\n")
+			case cc.GeneralPurposeSlider3: // swing
+				a.SetSwing(float32(v.Value()) / float32(127.0))
+			default:
+				writer.ControlChange(a.wr, v.Controller(), v.Value())
+			}
+
+		case channel.PolyAftertouch:
+			if v.Key()/12 == a.notePoolOctave {
+				a.SetNoteVelocity(v.Key()%12, v.Pressure())
+			} else {
+				a.SetStartNoteVelocity(v.Pressure())
+			}
+		case channel.Aftertouch:
+			writer.Aftertouch(a.wr, v.Pressure())
+		case channel.ProgramChange:
+			writer.ProgramChange(a.wr, v.Program())
+		case channel.Pitchbend:
+			writer.Pitchbend(a.wr, v.Value())
+		default:
+			panic("unreachable")
+		}
+
+		return
+	}
+
+	switch msg {
+	case realtime.TimingClock:
+		// TODO calculate the tempo from the clock
+		a.WriteMsg(msg)
+	case realtime.Tick:
+		// TODO calculate the tempo from the clock
+		a.WriteMsg(msg)
+	default:
+		a.WriteMsg(msg)
+	}
+
+	return
+}
+
+func (a *Arp) _transpose(msg midi.Message, transp int8) midi.Message {
+	switch v := msg.(type) {
+	case channel.NoteOn:
+		if a.channelIn >= 0 && uint8(a.channelIn) != v.Channel() {
+			return msg // pass through
+		}
+
+		_key := int8(v.Key()) + transp
+		if _key < 0 {
+			_key = 0
+		}
+
+		if _key > 127 {
+			_key = 127
+		}
+
+		return channel.Channel(v.Channel()).NoteOn(uint8(_key), v.Velocity())
+
+	case channel.NoteOff:
+		if a.channelIn >= 0 && uint8(a.channelIn) != v.Channel() {
+			return msg // pass through
+		}
+
+		_key := int8(v.Key()) + transp
+		if _key < 0 {
+			_key = 0
+		}
+
+		if _key > 127 {
+			_key = 127
+		}
+
+		return channel.Channel(v.Channel()).NoteOff(uint8(_key))
+
+	case channel.NoteOffVelocity:
+		if a.channelIn >= 0 && uint8(a.channelIn) != v.Channel() {
+			return msg // pass through
+		}
+
+		_key := int8(v.Key()) + transp
+		if _key < 0 {
+			_key = 0
+		}
+
+		if _key > 127 {
+			_key = 127
+		}
+
+		return channel.Channel(v.Channel()).NoteOff(uint8(_key))
+
+	default:
+		return msg
+	}
 }
 
 func (a *Arp) Run() error {
@@ -478,126 +692,49 @@ func (a *Arp) Run() error {
 		return fmt.Errorf("midi out port no %v (%s) is not opened, please open before calling arp.Run", a.out.Number(), a.out.String())
 	}
 
-	a.Lock()
-	a.wr = writer.New(a.out)
+	a.Lock("Run")
+	var wrapper writeWrapper
+	wrapper.Out = a.out
+	a.wr = writer.New(&wrapper)
+	a.wr.ConsolidateNotes(false)
 	a.wr.SetChannel(a.channelOut) // set default writing channel
+	//var wg sync.WaitGroup
+
+	transp := a.transpose
+
+	go func() {
+		for {
+			select {
+			case msg := <-a.messages:
+				//fmt.Printf("got message\n")
+				//wg.Add(1)
+				if transp == 0 {
+					a.handleMessage(msg)
+				} else {
+					a.handleMessage(a._transpose(msg, transp))
+				}
+
+				//wg.Done()
+				//default:
+				//default:
+				//wg.Wait()
+			}
+		}
+	}()
 
 	rd := reader.New(
 		reader.NoLogger(),
 		reader.Each(func(p *reader.Position, msg midi.Message) {
-
-			if chMsg, isCh := msg.(channel.Message); isCh {
-				if a.channelIn >= 0 && uint8(a.channelIn) != chMsg.Channel() {
-					a.WriteMsg(msg) // pass through
-					return
-				}
-
-				switch v := msg.(type) {
-				case channel.NoteOn:
-					if v.Key()/12 == a.notePoolOctave {
-						if v.Velocity() > 0 {
-							a.AddNote(v.Key()%12, v.Velocity())
-						} else {
-							a.RemoveNote(v.Key() % 12)
-						}
-					} else {
-						if v.Velocity() > 0 {
-							a.StartWithNote(v.Key(), v.Velocity())
-						} else {
-							a.Stop()
-						}
-					}
-				case channel.NoteOff:
-					if v.Key()/12 == a.notePoolOctave {
-						a.RemoveNote(v.Key() % 12)
-					} else {
-						a.Stop()
-					}
-				case channel.NoteOffVelocity:
-					if v.Key()/12 == a.notePoolOctave {
-						a.RemoveNote(v.Key() % 12)
-					} else {
-						a.Stop()
-					}
-				case channel.ControlChange:
-					switch v.Controller() {
-					case cc.GeneralPurposeButton1Switch: // direction
-						switch v.Value() {
-						//case 127:
-						//	a.SetDirectionRepeat()
-						case 0:
-							a.SwitchDirection()
-						default:
-							// ignore
-						}
-					case cc.GeneralPurposeSlider1: // note distance
-						// TODO maybe that is better served by special note to distance mapping in fixed steps
-						// e.g. 1/4, 1/8, 1/16, tripplets etc. could also be mapped to program changes (but they could also be interesting for the instruments behind)
-						dist := noteDistanceMap[v.Value()]
-						if dist == 0.0 {
-							dist = 1.0
-						}
-						a.SetNoteDistance(dist)
-					case cc.GeneralPurposeSlider2: // style
-						switch {
-						case v.Value() < 11:
-							a.SetStyleStaccato()
-						case v.Value() > 116:
-							a.SetStyleLegato()
-						default:
-							a.SetStyleNonLegato()
-						}
-					case cc.GeneralPurposeSlider3: // swing
-						a.SetSwing(float32(v.Value()) / float32(127.0))
-					default:
-						a.Lock()
-						writer.ControlChange(a.wr, v.Controller(), v.Value())
-						a.Unlock()
-					}
-
-				case channel.PolyAftertouch:
-					if v.Key()/12 == a.notePoolOctave {
-						a.SetNoteVelocity(v.Key()%12, v.Pressure())
-					} else {
-						a.SetStartNoteVelocity(v.Pressure())
-					}
-				case channel.Aftertouch:
-					a.Lock()
-					writer.Aftertouch(a.wr, v.Pressure())
-					a.Unlock()
-				case channel.ProgramChange:
-					a.Lock()
-					writer.ProgramChange(a.wr, v.Program())
-					a.Unlock()
-				case channel.Pitchbend:
-					a.Lock()
-					writer.Pitchbend(a.wr, v.Value())
-					a.Unlock()
-				default:
-					panic("unreachable")
-				}
-
-				return
-			}
-
-			switch msg {
-			case realtime.TimingClock:
-				// TODO calculate the tempo from the clock
-				a.WriteMsg(msg)
-			case realtime.Tick:
-				// TODO calculate the tempo from the clock
-				a.WriteMsg(msg)
-			default:
-				a.WriteMsg(msg)
-			}
+			a.messages <- msg
 		}),
 	)
-	a.Unlock()
+	a.Unlock("Run")
 	a.finish = a.play()
 	time.Sleep(20 * time.Millisecond)
 	a.calcNoteDistance()
 	a.calcNoteLen()
-	return rd.ListenTo(a.in)
+	go rd.ListenTo(a.in)
+	return nil
 }
 
 func (a *Arp) Stop() {
@@ -607,11 +744,11 @@ func (a *Arp) Stop() {
 	if !running {
 		return
 	}
-	a.Lock()
+	a.Lock("Stop")
 	a.stop <- true
 	_ = <-a.stopped
 	a.isRunning = false
-	a.Unlock()
+	a.Unlock("Stop")
 }
 
 func (a *Arp) Close() error {

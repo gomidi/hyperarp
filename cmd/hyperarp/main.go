@@ -15,9 +15,10 @@ import (
 var CONFIG = config.MustNew("hyperarp", hyperarp.VERSION, "hyper arpeggiator")
 
 var (
-	inArg   = CONFIG.NewInt32("in", "number of the input device", config.Required, config.Shortflag('i'))
-	outArg  = CONFIG.NewInt32("out", "number of the output device", config.Required, config.Shortflag('o'))
-	listCmd = CONFIG.MustCommand("list", "list devices").Relax("in").Relax("out")
+	inArg        = CONFIG.NewInt32("in", "number of the input device", config.Required, config.Shortflag('i'))
+	outArg       = CONFIG.NewInt32("out", "number of the output device", config.Required, config.Shortflag('o'))
+	transposeArg = CONFIG.NewInt32("transpose", "transpose (half notes)", config.Default(int32(0)), config.Shortflag('t'))
+	listCmd      = CONFIG.MustCommand("list", "list devices").Relax("in").Relax("out")
 )
 
 func main() {
@@ -74,7 +75,15 @@ func run() error {
 	defer inPort.Close()
 	defer outPort.Close()
 
-	arp := hyperarp.New(inPort, outPort)
+	opts := []hyperarp.Option{}
+
+	tr := int8(transposeArg.Get())
+
+	if tr != 0 {
+		opts = append(opts, hyperarp.Transpose(tr))
+	}
+
+	arp := hyperarp.New(inPort, outPort, opts...)
 
 	go arp.Run()
 	defer arp.Close()

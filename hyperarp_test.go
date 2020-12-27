@@ -90,6 +90,15 @@ func TestFirst(t *testing.T) {
 		expected string
 	}{
 		{
+			func() {
+				writer.NoteOn(a, 70, 100)
+				time.Sleep(500 * time.Millisecond)
+				writer.NoteOff(a, 70)
+			},
+			"note 70",
+			"channel.NoteOn channel 0 key 70 velocity 100\n[167] channel.NoteOff channel 0 key 70\n[83] channel.NoteOn channel 0 key 70 velocity 100\n[167] channel.NoteOff channel 0 key 70\n",
+		},
+		{
 			func() { writer.Pitchbend(a, 1000) },
 			"pitchbend passthrough",
 			"channel.Pitchbend channel 0 value 1000 absValue 9192\n",
@@ -104,7 +113,7 @@ func TestFirst(t *testing.T) {
 				writer.ControlChange(a, cc.GeneralPurposeSlider1, 3)
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(800 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
 			},
@@ -125,7 +134,7 @@ func TestFirst(t *testing.T) {
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, hyperarp.G, 80)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(800 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, hyperarp.G)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
@@ -149,7 +158,7 @@ func TestFirst(t *testing.T) {
 				time.Sleep(time.Microsecond)
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(800 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
 			},
@@ -160,25 +169,35 @@ func TestFirst(t *testing.T) {
 [83] channel.NoteOff channel 0 key 14
 [41] channel.NoteOn channel 0 key 4 velocity 120
 [83] channel.NoteOff channel 0 key 4
-[41] channel.NoteOn channel 0 key 2 velocity 100
-[83] channel.NoteOff channel 0 key 2
+[41] channel.NoteOn channel 0 key 14 velocity 100
+[83] channel.NoteOff channel 0 key 14
 `,
 		},
 	}
 
 	for i, test := range tests {
+		/*
+			if i != 0 {
+				continue
+			}
+		*/
 		a = newArpTester()
 		a.Run()
 
 		time.Sleep(400 * time.Millisecond)
 
 		test.fn()
+		//fmt.Printf("after test %v\n", i)
+		time.Sleep(2400 * time.Millisecond)
+
 		got := a.Result()
 		a.Close()
 
 		if got != test.expected {
 			t.Errorf("[%v] %q\ngot:\n%s\n\nexpected:\n%s", i, test.descr, got, test.expected)
 		}
+
+		time.Sleep(400 * time.Millisecond)
 	}
 
 }

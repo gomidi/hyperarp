@@ -1,0 +1,14 @@
+gitlab.com/gomidi/midi v1.15.3/go.mod h1:3ohtNOhqoSakkuLG/Li1OI6I3J1c2LErnJF5o/VBq1c=
+gitlab.com/gomidi/midi v1.16.4/go.mod h1:3ohtNOhqoSakkuLG/Li1OI6I3J1c2LErnJF5o/VBq1c=
+gitlab.com/gomidi/midi v1.20.3 h1:aTUkReoHHb7flsbBcDjur0XFbEU///OEStm2lJ+a+Ro=
+gitlab.com/gomidi/midi v1.20.3/go.mod h1:3ohtNOhqoSakkuLG/Li1OI6I3J1c2LErnJF5o/VBq1c=
+gitlab.com/gomidi/rtmididrv v0.9.3 h1:igL6gYTFd8y5km+2UzbDRdLbyGmnAZiJmTepFhtu8vg=
+gitlab.com/gomidi/rtmididrv v0.9.3/go.mod h1:Tm1+gEkKGIvMCTieUc0WcZU3BqYyzwEmnWDx1Dr9JJw=
+gitlab.com/gomidi/rtmididrv v0.10.1 h1:BgqhFpBgythJqFbiR8QtL3CER1nh26YCUPFGVidS9gk=
+gitlab.com/gomidi/rtmididrv v0.10.1/go.mod h1:sBxBDsJKVhinLt+kk7fj6WfKRCmnFzFSkFY1chDNLbw=
+gitlab.com/gomidi/rtmididrv/imported/rtmidi v0.0.0-20191025100939-514fe0ed97a6 h1:0XqAH/BAxH5TTBzIWkdlZqpp6VUx6DFcQnMWW6G6hIc=
+gitlab.com/gomidi/rtmididrv/imported/rtmidi v0.0.0-20191025100939-514fe0ed97a6/go.mod h1:FYVFN2H23IsX56VntiDF9DgCIekHh359wW+iMl1W8rQ=
+gitlab.com/metakeule/config v1.15.5 h1:vrVMpAX9YUIB4EFys3ELhCDvr1Uukf6ORdDaXdRBe+E=
+gitlab.com/metakeule/config v1.15.5/go.mod h1:cf4RRJmasbQ5/lXkTJQnqCiJ2MC9ShDS6EsBrA9ni74=
+gitlab.com/metakeule/fmtdate v1.2.0 h1:MCtqJiTO3j8yTn28aJvgvQy63f1DsjTj702f7TGaFOk=
+gitlab.com/metakeule/fmtdate v1.2.0/go.mod h1:uZUf21xepWGLp6PgJGBbHeBVWO+/gsKi3Gdh0Fu4lGg=

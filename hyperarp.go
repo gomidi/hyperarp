@@ -136,6 +136,16 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 		if nextNote < int(lastNote) {
 			nextNote += 12
 		}
+
+		if nextNote > 115 {
+			a.Lock()
+			a.direction = -1
+			a.Unlock()
+		}
+
+		if nextNote > 127 {
+			nextNote = 127
+		}
 		//fmt.Printf("note (up) is %v\n", nextNote)
 		return uint8(nextNote), vel
 	case -1:
@@ -152,6 +162,17 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 		if nextNote > int(lastNote) {
 			nextNote -= 12
 		}
+
+		if nextNote < 12 {
+			a.Lock()
+			a.direction = 1
+			a.Unlock()
+		}
+
+		if nextNote < 0 {
+			nextNote = 0
+		}
+
 		//fmt.Printf("note (down) is %v\n", nextNote)
 		return uint8(nextNote), vel
 	default:

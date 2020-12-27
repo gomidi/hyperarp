@@ -6,11 +6,11 @@ get:
 	go get ./...
 
 build:
-	cd cmd/hyperarp && config build -v --versiondir='../../' && config build --versiondir='../../'
+	cd cmd/hyperarp && config build -v --versiondir='../../' --plattforms='linux/amd64' && config build --versiondir='../../' --plattforms='linux/amd64'
 
 release:
 	config release --versiondir='.' --package='hyperarp'
-	cd cmd/hyperarp && config build -v --versiondir='../../' && config build --versiondir='../../'
+	cd cmd/hyperarp && config build -v --versiondir='../../' --plattforms='linux/amd64' && config build --versiondir='../../' --plattforms='linux/amd64'
 
 test:
 	go test ./... -v -coverprofile .coverage.txt

@@ -76,7 +76,7 @@ var noteDistanceMap = map[uint8]float64{
 func (a *Arp) calcNextNote() (key, velocity uint8) {
 	//fmt.Printf("calcNextNote\n")
 	a.RLock()
-	dir := a.direction
+	dir := a.directionUp
 	notes := a.notes
 	vels := a.noteVelocities
 	startkey := a.startingNote
@@ -86,26 +86,28 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 
 	//fmt.Printf("direction is %v\n", dir)
 
-	if dir == 0 { // repetition
-		if lastNote == 0 {
-			lastNote = startkey
+	/*
+		if dir == 0 { // repetition
+			if lastNote == 0 {
+				lastNote = startkey
+			}
+			vel := vels[note(lastNote%12)]
+
+			if lastNote == startkey {
+				vel = startVel
+			}
+
+			//fmt.Printf("note (repeat) is %v\n", lastNote)
+
+			return lastNote, vel
 		}
-		vel := vels[note(lastNote%12)]
-
-		if lastNote == startkey {
-			vel = startVel
-		}
-
-		//fmt.Printf("note (repeat) is %v\n", lastNote)
-
-		return lastNote, vel
-	}
+	*/
 
 	var notePool []int // = make([]int, len(notes)+1)
 	notePool = append(notePool, int(startkey%12))
 
 	for nt, ok := range notes {
-		if ok {
+		if ok && int(uint8(nt)) != int(startkey%12) {
 			notePool = append(notePool, int(uint8(nt)))
 		}
 	}
@@ -126,7 +128,7 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 	}
 
 	switch dir {
-	case 1:
+	case true:
 		nextidx := (lastIdx + 1) % len(notePool)
 		nextNote := notePool[nextidx]
 		vel := vels[note(uint8(nextNote%12))]
@@ -138,18 +140,16 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 			nextNote += 12
 		}
 
-		if nextNote > 115 {
-			a.Lock("calcNextNote: switch direction")
-			a.direction = -1
-			a.Unlock("calcNextNote: switch direction")
+		if nextNote > (127 - int(startkey%12)) {
+			a.Lock("calcNextNote: begin with startKey")
+			nextNote = int(startkey)
+			a.lastNote = startkey
+			a.Unlock("calcNextNote: begin with startKey")
 		}
 
-		if nextNote > 127 {
-			nextNote = 127
-		}
 		//fmt.Printf("note (up) is %v\n", nextNote)
 		return uint8(nextNote), vel
-	case -1:
+	case false:
 		if lastIdx == 0 {
 			lastIdx = len(notePool)
 		}
@@ -164,10 +164,11 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 			nextNote -= 12
 		}
 
-		if nextNote < 12 {
-			a.Lock("calcNextNote: switch direction")
-			a.direction = 1
-			a.Unlock("calcNextNote: switch direction")
+		if nextNote < int(startkey%12) {
+			a.Lock("calcNextNote: begin with startKey")
+			nextNote = int(startkey)
+			a.lastNote = startkey
+			a.Unlock("calcNextNote: begin with startKey")
 		}
 
 		if nextNote < 0 {
@@ -182,20 +183,20 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 }
 
 type Arp struct {
-	tempoBPM        float64
-	direction       int  // -1 down, 0 repeat, 1 up
-	lastDirectionUp bool // may only be up (true) or down (false)
-	notes           map[note]bool
-	noteVelocities  map[note]uint8
-	noteDistance    float64 // 1 = quarter note, 0.5 = eigths etc.
-	startingNote    uint8
-	startVelocity   uint8
-	style           int     // -1 staccato, 0 non-legato, 1 legato
-	swing           float32 // %
-	lastNote        uint8
-	notePoolOctave  uint8
-	channelIn       int8 // -1 = all channels
-	channelOut      uint8
+	tempoBPM    float64
+	directionUp bool // -1 down, 0 repeat, 1 up
+	//lastDirectionUp bool // may only be up (true) or down (false)
+	notes          map[note]bool
+	noteVelocities map[note]uint8
+	noteDistance   float64 // 1 = quarter note, 0.5 = eigths etc.
+	startingNote   uint8
+	startVelocity  uint8
+	style          int     // -1 staccato, 0 non-legato, 1 legato
+	swing          float32 // %
+	lastNote       uint8
+	notePoolOctave uint8
+	channelIn      int8 // -1 = all channels
+	channelOut     uint8
 	sync.RWMutex
 	start     chan [2]uint8
 	stop      chan bool
@@ -206,10 +207,13 @@ type Arp struct {
 	messages  chan midi.Message
 	isRunning bool
 	//driver midi.Driver
-	in        midi.In
-	out       midi.Out
-	wr        *writer.Writer
-	transpose int8
+	in                midi.In
+	out               midi.Out
+	wr                *writer.Writer
+	transpose         int8
+	ccDirectionSwitch uint8
+	ccNoteDistance    uint8
+	ccStyle           uint8
 }
 
 type Option func(a *Arp)
@@ -218,6 +222,27 @@ type Option func(a *Arp)
 func NotePoolOctave(oct uint8) Option {
 	return func(a *Arp) {
 		a.notePoolOctave = oct
+	}
+}
+
+// CCDirectionSwitch sets the controller for the direction switch
+func CCDirectionSwitch(controller uint8) Option {
+	return func(a *Arp) {
+		a.ccDirectionSwitch = controller
+	}
+}
+
+// CCTimeInterval sets the controller for the time interval
+func CCTimeInterval(controller uint8) Option {
+	return func(a *Arp) {
+		a.ccNoteDistance = controller
+	}
+}
+
+// CCStyle sets the controller for the playing style (staccato, legato, non-legato
+func CCStyle(controller uint8) Option {
+	return func(a *Arp) {
+		a.ccStyle = controller
 	}
 }
 
@@ -249,17 +274,20 @@ func ChannelOut(ch uint8) Option {
 // New returns a new Arp, receiving from the given midi.In port and writing to the given midi.Out port
 func New(in midi.In, out midi.Out, opts ...Option) *Arp {
 	a := &Arp{
-		in:             in,
-		out:            out,
-		notePoolOctave: 0,
-		channelIn:      -1,
-		channelOut:     0,
-		start:          make(chan [2]uint8, 100),
-		stop:           make(chan bool),
-		stopped:        make(chan bool),
-		noteDist:       make(chan time.Duration),
-		noteLen:        make(chan time.Duration),
-		messages:       make(chan midi.Message, 100),
+		in:                in,
+		out:               out,
+		notePoolOctave:    0,
+		channelIn:         -1,
+		channelOut:        0,
+		start:             make(chan [2]uint8, 100),
+		stop:              make(chan bool),
+		stopped:           make(chan bool),
+		noteDist:          make(chan time.Duration),
+		noteLen:           make(chan time.Duration),
+		messages:          make(chan midi.Message, 100),
+		ccDirectionSwitch: cc.GeneralPurposeButton1Switch,
+		ccNoteDistance:    cc.GeneralPurposeSlider1,
+		ccStyle:           cc.GeneralPurposeSlider2,
 	}
 
 	for _, opt := range opts {
@@ -276,8 +304,8 @@ func (a *Arp) Reset() {
 	a.noteVelocities = map[note]uint8{}
 	a.tempoBPM = 120.00
 	a.noteDistance = 0.5
-	a.direction = 1
-	a.lastDirectionUp = true
+	a.directionUp = true
+	//a.lastDirectionUp = true
 	a.Unlock("Reset")
 }
 
@@ -287,16 +315,10 @@ func (a *Arp) SetTempo(bpm float64) {
 	a.Unlock("SetTempo")
 }
 
-func (a *Arp) SwitchDirection() {
+func (a *Arp) SwitchDirection(val uint8) {
 	//fmt.Println("switching direction")
 	a.Lock("SwitchDirection")
-	if a.lastDirectionUp {
-		a.lastDirectionUp = false
-		a.direction = -1
-	} else {
-		a.lastDirectionUp = true
-		a.direction = 1
-	}
+	a.directionUp = val >= 64
 	a.Unlock("SwitchDirection")
 }
 
@@ -561,16 +583,10 @@ func (a *Arp) handleMessage(msg midi.Message) {
 			}
 		case channel.ControlChange:
 			switch v.Controller() {
-			case cc.GeneralPurposeButton1Switch: // direction
-				switch v.Value() {
-				//case 127:
-				//	a.SetDirectionRepeat()
-				case 0:
-					a.SwitchDirection()
-				default:
-					// ignore
-				}
-			case cc.GeneralPurposeSlider1: // note distance
+			case a.ccDirectionSwitch: // direction
+				a.SwitchDirection(v.Value())
+				fmt.Printf("SwitchDirection\n")
+			case a.ccNoteDistance: // note distance
 				// TODO maybe that is better served by special note to distance mapping in fixed steps
 				// e.g. 1/4, 1/8, 1/16, tripplets etc. could also be mapped to program changes (but they could also be interesting for the instruments behind)
 				dist := noteDistanceMap[v.Value()%12]
@@ -579,11 +595,11 @@ func (a *Arp) handleMessage(msg midi.Message) {
 				}
 				fmt.Printf("setting note distance to %v (%v)\n", dist, v.Value())
 				a.SetNoteDistance(dist)
-			case cc.GeneralPurposeSlider2: // style
+			case a.ccStyle: // style
 				switch {
-				case v.Value() < 11:
+				case v.Value() < 40:
 					a.SetStyleStaccato()
-				case v.Value() > 116:
+				case v.Value() > 80:
 					a.SetStyleLegato()
 				default:
 					a.SetStyleNonLegato()
@@ -696,7 +712,7 @@ func (a *Arp) Run() error {
 	var wrapper writeWrapper
 	wrapper.Out = a.out
 	a.wr = writer.New(&wrapper)
-	a.wr.ConsolidateNotes(false)
+	//a.wr.ConsolidateNotes(false)
 	a.wr.SetChannel(a.channelOut) // set default writing channel
 	//var wg sync.WaitGroup
 

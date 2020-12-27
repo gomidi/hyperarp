@@ -92,11 +92,11 @@ func TestFirst(t *testing.T) {
 		{
 			func() {
 				writer.NoteOn(a, 70, 100)
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(200 * time.Millisecond)
 				writer.NoteOff(a, 70)
 			},
 			"note 70",
-			"channel.NoteOn channel 0 key 70 velocity 100\n[167] channel.NoteOff channel 0 key 70\n[83] channel.NoteOn channel 0 key 70 velocity 100\n[167] channel.NoteOff channel 0 key 70\n",
+			"channel.NoteOn channel 0 key 70 velocity 100\n[166] channel.NoteOff channel 0 key 70\n",
 		},
 		{
 			func() { writer.Pitchbend(a, 1000) },
@@ -113,7 +113,7 @@ func TestFirst(t *testing.T) {
 				writer.ControlChange(a, cc.GeneralPurposeSlider1, 3)
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(800 * time.Millisecond)
+				time.Sleep(400 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
 			},
@@ -134,7 +134,7 @@ func TestFirst(t *testing.T) {
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, hyperarp.G, 80)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(800 * time.Millisecond)
+				time.Sleep(400 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, hyperarp.G)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
@@ -158,7 +158,7 @@ func TestFirst(t *testing.T) {
 				time.Sleep(time.Microsecond)
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(800 * time.Millisecond)
+				time.Sleep(400 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
 			},
@@ -169,8 +169,8 @@ func TestFirst(t *testing.T) {
 [83] channel.NoteOff channel 0 key 14
 [41] channel.NoteOn channel 0 key 4 velocity 120
 [83] channel.NoteOff channel 0 key 4
-[41] channel.NoteOn channel 0 key 14 velocity 100
-[83] channel.NoteOff channel 0 key 14
+[41] channel.NoteOn channel 0 key 16 velocity 100
+[83] channel.NoteOff channel 0 key 16
 `,
 		},
 	}

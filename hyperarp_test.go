@@ -181,17 +181,27 @@ func TestFirst(t *testing.T) {
 				continue
 			}
 		*/
+
+		//fmt.Printf("running test [%v]\n", i)
 		a = newArpTester()
 		a.Run()
 
+		//fmt.Println("let it start (400ms)")
 		time.Sleep(400 * time.Millisecond)
 
 		test.fn()
+
+		//fmt.Println("waiting for result (2400ms)")
 		//fmt.Printf("after test %v\n", i)
-		time.Sleep(2400 * time.Millisecond)
+		//time.Sleep(2400 * time.Millisecond)
+		time.Sleep(800 * time.Millisecond)
 
 		got := a.Result()
+		//fmt.Printf("got result %q\n", got)
+
+		//fmt.Println("before close")
 		a.Close()
+		//fmt.Println("after close")
 
 		if got != test.expected {
 			t.Errorf("[%v] %q\ngot:\n%s\n\nexpected:\n%s", i, test.descr, got, test.expected)

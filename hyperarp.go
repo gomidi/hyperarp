@@ -75,14 +75,17 @@ var noteDistanceMap = map[uint8]float64{
 // calcNextNote calculates the next note that will be played
 func (a *Arp) calcNextNote() (key, velocity uint8) {
 	//fmt.Printf("calcNextNote\n")
-	a.RLock()
+	a.Lock("calcNextNote")
+	//a.RLock()
 	dir := a.directionUp
 	notes := a.notes
 	vels := a.noteVelocities
 	startkey := a.startingNote
 	startVel := a.startVelocity
 	lastNote := a.lastNote
-	a.RUnlock()
+	//a.RUnlock()
+
+	defer a.Unlock("calcNextNote")
 
 	//fmt.Printf("direction is %v\n", dir)
 
@@ -141,10 +144,10 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 		}
 
 		if nextNote > (127 - int(startkey%12)) {
-			a.Lock("calcNextNote: begin with startKey")
+			//a.Lock("calcNextNote: begin with startKey")
 			nextNote = int(startkey)
 			a.lastNote = startkey
-			a.Unlock("calcNextNote: begin with startKey")
+			//a.Unlock("calcNextNote: begin with startKey")
 		}
 
 		//fmt.Printf("note (up) is %v\n", nextNote)
@@ -165,10 +168,10 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 		}
 
 		if nextNote < int(startkey%12) {
-			a.Lock("calcNextNote: begin with startKey")
+			//a.Lock("calcNextNote: begin with startKey")
 			nextNote = int(startkey)
 			a.lastNote = startkey
-			a.Unlock("calcNextNote: begin with startKey")
+			//a.Unlock("calcNextNote: begin with startKey")
 		}
 
 		if nextNote < 0 {
@@ -188,6 +191,7 @@ type Arp struct {
 	//lastDirectionUp bool // may only be up (true) or down (false)
 	notes          map[note]bool
 	noteVelocities map[note]uint8
+	runningNote    int8
 	noteDistance   float64 // 1 = quarter note, 0.5 = eigths etc.
 	startingNote   uint8
 	startVelocity  uint8
@@ -198,13 +202,19 @@ type Arp struct {
 	channelIn      int8 // -1 = all channels
 	channelOut     uint8
 	sync.RWMutex
-	start     chan [2]uint8
-	stop      chan bool
-	stopped   chan bool
-	noteDist  chan time.Duration
-	noteLen   chan time.Duration
-	finish    chan bool
-	messages  chan midi.Message
+	start             chan [2]uint8
+	stop              chan bool
+	stopped           chan bool
+	noteDist          chan time.Duration
+	noteLen           chan time.Duration
+	finishScheduler   chan bool
+	finishListener    chan bool
+	finishedScheduler chan bool
+	finishedListener  chan bool
+	messages          chan midi.Message
+	nextArpNote       chan bool
+	//playnotes     chan *playnote
+	//stopPlaynotes chan bool
 	isRunning bool
 	//driver midi.Driver
 	in                midi.In
@@ -285,6 +295,13 @@ func New(in midi.In, out midi.Out, opts ...Option) *Arp {
 		noteDist:          make(chan time.Duration),
 		noteLen:           make(chan time.Duration),
 		messages:          make(chan midi.Message, 100),
+		nextArpNote:       make(chan bool),
+		finishScheduler:   make(chan bool),
+		finishListener:    make(chan bool),
+		finishedScheduler: make(chan bool),
+		finishedListener:  make(chan bool),
+		//playnotes:         make(chan playnote),
+		//stopPlaynotes:     make(chan bool),
 		ccDirectionSwitch: cc.GeneralPurposeButton1Switch,
 		ccNoteDistance:    cc.GeneralPurposeSlider1,
 		ccStyle:           cc.GeneralPurposeSlider2,
@@ -305,6 +322,7 @@ func (a *Arp) Reset() {
 	a.tempoBPM = 120.00
 	a.noteDistance = 0.5
 	a.directionUp = true
+	a.runningNote = -1
 	//a.lastDirectionUp = true
 	a.Unlock("Reset")
 }
@@ -358,6 +376,16 @@ func (a *Arp) StartWithNote(key, velocity uint8) {
 	*/
 }
 
+func (a *Arp) StopWithNote(key uint8) {
+	a.RLock()
+	startingNote := a.startingNote
+	a.RUnLock()
+
+	if startingNote == key {
+		a.Stop()
+	}
+}
+
 // TODO maybe remove
 func (a *Arp) SetStartNoteVelocity(velocity uint8) {
 	a.Lock("SetStartNoteVelocity")
@@ -405,17 +433,60 @@ func (a *Arp) WriteNoteOn(key, velocity uint8) error {
 	//fmt.Printf("before write noteon %v\n", key)
 	a.Lock("WriteNoteOn")
 	a.lastNote = key
-	a.Unlock("WriteNoteOn")
+	running := a.runningNote
+	if running > -1 {
+		writer.NoteOff(a.wr, uint8(running))
+	}
+	a.runningNote = int8(key)
 	err := writer.NoteOn(a.wr, key, velocity)
+	a.Unlock("WriteNoteOn")
 	//fmt.Printf("after write noteon %v\n", key)
 	return err
 }
 
 func (a *Arp) WriteNoteOff(key uint8) error {
+	a.Lock("WriteNoteOff")
+	/*
+		running := a.runningNote
+		if running == -1 {
+			a.Unlock("WriteNoteOff")
+			return nil
+		}
+	*/
+
+	/*
+		if uint8(running) != key {
+			panic("should not happen: two notes playing at the same time")
+		}
+	*/
 	//fmt.Printf("before write noteoff %v\n", key)
+	a.runningNote = -1
 	err := writer.NoteOff(a.wr, key)
 	//fmt.Printf("after write noteoff %v\n", key)
+	a.Unlock("WriteNoteOff")
 	return err
+}
+
+func (a *Arp) Silence() (did bool) {
+	//fmt.Println("NoteOffRunning requested")
+	a.Lock("Silence")
+	a.wr.Silence(int8(a.channelOut), false)
+	a.Unlock("Silence")
+	return true
+	/*
+		running := a.runningNote
+		if running == -1 {
+			a.Unlock("Silence")
+			return false
+		}
+
+		//fmt.Printf("before write noteoff %v\n", key)
+		writer.NoteOff(a.wr, uint8(running))
+		a.runningNote = -1
+		//fmt.Printf("after write noteoff %v\n", key)
+		a.Unlock("Silence")
+		return true
+	*/
 }
 
 func (a *Arp) WriteMsg(msg midi.Message) error {
@@ -425,8 +496,11 @@ func (a *Arp) WriteMsg(msg midi.Message) error {
 
 // calcNoteDistance calculates the time until the next note will start and sends it to the noteDist channel
 func (a *Arp) calcNoteDistance() {
-	dist := time.Duration(int(math.Round(a._calcNoteDistance()))) * time.Microsecond
-	a.noteDist <- dist
+	a.noteDist <- a.__calcNoteDistance()
+}
+
+func (a *Arp) __calcNoteDistance() time.Duration {
+	return time.Duration(int(math.Round(a._calcNoteDistance()))) * time.Microsecond
 }
 
 // _calcNoteDistance calculates the note distance in microseconds
@@ -445,6 +519,10 @@ func (a *Arp) _calcNoteDistance() float64 {
 
 // calcNoteLen calculates the current length of a note, based on the time distance and playing style and sends it to the noteLen channel
 func (a *Arp) calcNoteLen() {
+	a.noteLen <- a._calcNoteLen()
+}
+
+func (a *Arp) _calcNoteLen() time.Duration {
 
 	dist := a._calcNoteDistance()
 	a.RLock()
@@ -463,9 +541,122 @@ func (a *Arp) calcNoteLen() {
 		panic("unreachable")
 	}
 
-	a.noteLen <- time.Duration(int(math.Round(l))) * time.Microsecond
+	return time.Duration(int(math.Round(l))) * time.Microsecond
 }
 
+type playnote struct {
+	key      uint8
+	velocity uint8
+	dur      time.Duration
+	wait     time.Duration
+}
+
+//func (a *Arp) scheduleNoteOff(k uint8, l time.Duration, wg *sync.WaitGroup) {
+func (a *Arp) scheduleNoteOff(k uint8, l time.Duration) {
+	//	fmt.Printf("scheduling note off %v\n", k)
+	time.Sleep(l)
+	a.WriteNoteOff(k)
+	//	fmt.Printf("note off %v written\n", k)
+	//wg.Done()
+}
+
+func (a *Arp) play() {
+	//var wg sync.WaitGroup
+	var t *time.Timer
+	var nt [2]uint8
+	var mx sync.RWMutex
+
+	noteDist := a.__calcNoteDistance()
+	noteLen := a._calcNoteLen()
+
+	stopTimer := func() {
+		mx.Lock()
+		if t != nil {
+			//fmt.Println("try stopping timer")
+			t.Stop()
+			//fmt.Println("stopped timer")
+		} else {
+			//fmt.Println("timer was nil")
+		}
+		mx.Unlock()
+		//a.Silence()
+	}
+
+	go func() {
+	loop:
+		for {
+			select {
+			case noteDist = <-a.noteDist:
+			case noteLen = <-a.noteLen:
+			case <-a.finishScheduler:
+				//fmt.Println("finishing")
+				a.Silence()
+				/*
+					did := a.NoteOffRunning()
+
+					if did {
+						wg.Done()
+					}
+					wg.Wait()
+				*/
+				break loop
+			case <-a.nextArpNote:
+				//fmt.Println("nextArpNote requested")
+				stopTimer()
+				//fmt.Printf("scheduling nextArpNote after: %s\n", noteDist.String())
+				mx.Lock()
+				//fmt.Println("setting new timer")
+				t = time.AfterFunc(noteDist, func() {
+					//fmt.Println("running timer")
+					key, velocity := a.calcNextNote()
+					a.WriteNoteOn(key, velocity)
+					//fmt.Printf("nextArpNote played %v\n", key)
+					//wg.Add(1)
+					//go a.scheduleNoteOff(key, noteLen, &wg)
+					go a.scheduleNoteOff(key, noteLen)
+					go func() {
+						//fmt.Println("requesting nextArpNote")
+						a.nextArpNote <- true
+					}()
+				})
+				mx.Unlock()
+				//fmt.Println("new timer was set")
+			case nt = <-a.start:
+				stopTimer()
+				//wg.Add(1)
+				a.WriteNoteOn(nt[0], nt[1])
+				//fmt.Printf("start note played %v\n", nt[0])
+				//go a.scheduleNoteOff(nt[0], noteLen, &wg)
+				go a.scheduleNoteOff(nt[0], noteLen)
+				go func() {
+					//fmt.Println("requesting nextArpNote after start")
+					a.nextArpNote <- true
+				}()
+			case <-a.stop:
+				//fmt.Println("stop called")
+				stopTimer()
+
+				//a.NoteOffRunning()
+				/*
+					did := a.NoteOffRunning()
+					if did {
+						wg.Done()
+					}
+					wg.Wait()
+				*/
+				a.stopped <- true
+			default:
+				//fmt.Printf("sleeping %v\n", noteDist)
+			}
+		}
+
+		//fmt.Println("send finished")
+		a.finishedScheduler <- true
+	}()
+
+}
+
+/*
 func (a *Arp) play() (finish chan bool) {
 	var noteDist, noteLen time.Duration
 	var stopped bool = true
@@ -482,10 +673,13 @@ func (a *Arp) play() (finish chan bool) {
 			case noteDist = <-a.noteDist:
 			case noteLen = <-a.noteLen:
 			case stopped = <-a.stop:
-				wg.Wait()
 				a.stopped <- true
+				a.stopPlaynotes <- true
 			case nt = <-a.start:
-				key, velocity = nt[0], nt[1]
+				var pn playnote
+				pn.key, pn.velocity = nt[0], nt[1]
+				pn.dur = noteLen
+				a.playnotes <- pn
 				stopped = false
 			default:
 				if !stopped {
@@ -501,8 +695,14 @@ func (a *Arp) play() (finish chan bool) {
 						//fmt.Printf("after done for key %v\n", k)
 					}(key, noteLen)
 					//fmt.Printf("before calcNextNote\n")
-					key, velocity = a.calcNextNote()
 					time.Sleep(noteDist)
+					var pn playnote
+					pn.key, pn.velocity = a.calcNextNote()
+					pn.dur = noteLen
+
+					a.playnotes <- pn
+					key, velocity = a.calcNextNote()
+
 				}
 				//fmt.Printf("sleeping %v\n", noteDist)
 			}
@@ -512,6 +712,7 @@ func (a *Arp) play() (finish chan bool) {
 
 	return
 }
+*/
 
 type writeWrapper struct {
 	midi.Out
@@ -520,9 +721,9 @@ type writeWrapper struct {
 
 func (w *writeWrapper) Write(b []byte) (int, error) {
 	//fmt.Printf("before writing %v\n", b)
-	w.Lock()
+	//w.Lock()
 	i, err := w.Out.Write(b)
-	w.Unlock()
+	//w.Unlock()
 	//fmt.Printf("after writing %v\n", b)
 	return i, err
 }
@@ -566,20 +767,20 @@ func (a *Arp) handleMessage(msg midi.Message) {
 				if v.Velocity() > 0 {
 					a.StartWithNote(v.Key(), v.Velocity())
 				} else {
-					a.Stop()
+					a.StopWithNote(v.Key())
 				}
 			}
 		case channel.NoteOff:
 			if v.Key()/12 == a.notePoolOctave {
 				a.RemoveNote(v.Key() % 12)
 			} else {
-				a.Stop()
+				a.StopWithNote(v.Key())
 			}
 		case channel.NoteOffVelocity:
 			if v.Key()/12 == a.notePoolOctave {
 				a.RemoveNote(v.Key() % 12)
 			} else {
-				a.Stop()
+				a.StopWithNote(v.Key())
 			}
 		case channel.ControlChange:
 			switch v.Controller() {
@@ -714,13 +915,17 @@ func (a *Arp) Run() error {
 	a.wr = writer.New(&wrapper)
 	//a.wr.ConsolidateNotes(false)
 	a.wr.SetChannel(a.channelOut) // set default writing channel
+
 	//var wg sync.WaitGroup
 
 	transp := a.transpose
 
 	go func() {
+	loop:
 		for {
 			select {
+			case <-a.finishListener:
+				break loop
 			case msg := <-a.messages:
 				//fmt.Printf("got message\n")
 				//wg.Add(1)
@@ -730,12 +935,14 @@ func (a *Arp) Run() error {
 					a.handleMessage(a._transpose(msg, transp))
 				}
 
-				//wg.Done()
-				//default:
-				//default:
-				//wg.Wait()
+			//wg.Done()
+			//default:
+			//default:
+			//wg.Wait()
+			default:
 			}
 		}
+		a.finishedListener <- true
 	}()
 
 	rd := reader.New(
@@ -745,7 +952,7 @@ func (a *Arp) Run() error {
 		}),
 	)
 	a.Unlock("Run")
-	a.finish = a.play()
+	a.play()
 	time.Sleep(20 * time.Millisecond)
 	a.calcNoteDistance()
 	a.calcNoteLen()
@@ -758,20 +965,32 @@ func (a *Arp) Stop() {
 	running := a.isRunning
 	a.RUnlock()
 	if !running {
+		//fmt.Println("not running any more")
 		return
 	}
-	a.Lock("Stop")
 	a.stop <- true
 	_ = <-a.stopped
+	a.Lock("Stop")
 	a.isRunning = false
 	a.Unlock("Stop")
 }
 
 func (a *Arp) Close() error {
+	//fmt.Println("stop listening")
 	err := a.in.StopListening()
+	//fmt.Println("done: stop listening")
+	//fmt.Println("stop arp")
 	a.Stop()
-	a.finish <- true
-	time.Sleep(20 * time.Millisecond)
+	//fmt.Println("done: stop arp")
+	//fmt.Println("request finish listener")
+	a.finishListener <- true
+	<-a.finishedListener
+	//fmt.Println("got finished listener")
+	//fmt.Println("request finish scheduler")
+	a.finishScheduler <- true
+	<-a.finishedScheduler
+	//fmt.Println("got finished scheduler")
+	//time.Sleep(20 * time.Millisecond)
 	a.wr.Silence(-1, true)
 	return err
 }

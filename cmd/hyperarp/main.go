@@ -23,6 +23,12 @@ var (
 	ccTimeIntervalArg    = CONFIG.NewInt32("cctiming", "controller for the timing interval", config.Default(int32(cc.GeneralPurposeSlider1)))
 	ccStyleArg           = CONFIG.NewInt32("ccstyle", "controller for the playing style (staccato, non-legato, legato)", config.Default(int32(cc.GeneralPurposeSlider2)))
 
+	noteDirectionSwitchArg = CONFIG.NewInt32("notedir", "note for the direction switch")
+	noteTimeIntervalArg    = CONFIG.NewInt32("notetiming", "note for the timing interval")
+	noteStyleArg           = CONFIG.NewInt32("notestyle", "note for the playing style (staccato, non-legato, legato)")
+
+	controlChannelArg = CONFIG.NewInt32("ctrlch", "separate channel for control messages")
+
 	listCmd = CONFIG.MustCommand("list", "list devices").Relax("in").Relax("out")
 )
 
@@ -86,6 +92,22 @@ func run() error {
 		hyperarp.CCStyle(uint8(ccStyleArg.Get())),
 	}
 
+	if noteDirectionSwitchArg.IsSet() {
+		opts = append(opts, hyperarp.NoteDirectionSwitch(uint8(noteDirectionSwitchArg.Get())))
+	}
+
+	if noteTimeIntervalArg.IsSet() {
+		opts = append(opts, hyperarp.NoteTimeInterval(uint8(noteTimeIntervalArg.Get())))
+	}
+
+	if noteStyleArg.IsSet() {
+		opts = append(opts, hyperarp.NoteStyle(uint8(noteStyleArg.Get())))
+	}
+
+	if controlChannelArg.IsSet() {
+		opts = append(opts, hyperarp.ControlChannel(uint8(controlChannelArg.Get())))
+	}
+
 	tr := int8(transposeArg.Get())
 
 	if tr != 0 {
@@ -105,7 +127,6 @@ func run() error {
 	// interrupt has happend
 	<-sigchan
 	fmt.Println("\n--interrupted!")
-
 	return nil
 }
 

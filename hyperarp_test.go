@@ -96,15 +96,22 @@ func TestFirst(t *testing.T) {
 				writer.NoteOff(a, 70)
 			},
 			"note 70",
-			"channel.NoteOn channel 0 key 70 velocity 100\n[166] channel.NoteOff channel 0 key 70\n",
+			"channel.NoteOn channel 0 key 70 velocity 100\n[167] channel.NoteOff channel 0 key 70\n",
 		},
 		{
-			func() { writer.Pitchbend(a, 1000) },
+			func() {
+				writer.Pitchbend(a, 1000)
+				time.Sleep(10 * time.Millisecond)
+			},
 			"pitchbend passthrough",
 			"channel.Pitchbend channel 0 value 1000 absValue 9192\n",
 		},
 		{
-			func() { writer.Pitchbend(a, 100); writer.Aftertouch(a, 100) },
+			func() {
+				writer.Pitchbend(a, 100)
+				writer.Aftertouch(a, 100)
+				time.Sleep(10 * time.Millisecond)
+			},
 			"pitchbend and aftertouch passthrough",
 			"channel.Pitchbend channel 0 value 100 absValue 8292\n[0] channel.Aftertouch channel 0 pressure 100\n",
 		},
@@ -113,9 +120,10 @@ func TestFirst(t *testing.T) {
 				writer.ControlChange(a, cc.GeneralPurposeSlider1, 3)
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(400 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
+				time.Sleep(10 * time.Millisecond)
 			},
 			"2 arp notes upward",
 			`channel.NoteOn channel 0 key 16 velocity 120
@@ -134,7 +142,7 @@ func TestFirst(t *testing.T) {
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, hyperarp.G, 80)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(400 * time.Millisecond)
+				time.Sleep(530 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, hyperarp.G)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
@@ -154,13 +162,15 @@ func TestFirst(t *testing.T) {
 			func() {
 				writer.ControlChange(a, cc.GeneralPurposeSlider1, 3)
 				writer.CcOn(a, cc.GeneralPurposeButton1Switch)
-				writer.CcOff(a, cc.GeneralPurposeButton1Switch)
 				time.Sleep(time.Microsecond)
 				writer.NoteOn(a, hyperarp.D, 100)
 				writer.NoteOn(a, uint8(12+hyperarp.E), 120)
-				time.Sleep(400 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 				writer.NoteOff(a, hyperarp.D)
 				writer.NoteOff(a, uint8(12+hyperarp.E))
+				//time.Sleep(time.Microsecond)
+				writer.CcOff(a, cc.GeneralPurposeButton1Switch)
+				time.Sleep(10 * time.Millisecond)
 			},
 			"2 arp notes downward",
 			`channel.NoteOn channel 0 key 16 velocity 120
@@ -187,14 +197,14 @@ func TestFirst(t *testing.T) {
 		a.Run()
 
 		//fmt.Println("let it start (400ms)")
-		time.Sleep(400 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 
 		test.fn()
 
 		//fmt.Println("waiting for result (2400ms)")
 		//fmt.Printf("after test %v\n", i)
 		//time.Sleep(2400 * time.Millisecond)
-		time.Sleep(800 * time.Millisecond)
+		//time.Sleep(1000 * time.Millisecond)
 
 		got := a.Result()
 		//fmt.Printf("got result %q\n", got)
@@ -207,7 +217,7 @@ func TestFirst(t *testing.T) {
 			t.Errorf("[%v] %q\ngot:\n%s\n\nexpected:\n%s", i, test.descr, got, test.expected)
 		}
 
-		time.Sleep(400 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 }

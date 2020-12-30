@@ -40,42 +40,6 @@ that they can interrupt each other (need different starting times or note-time-d
 the big question is: how to control that beast ;-)
 */
 
-type note uint8
-
-const (
-	C   note = 0
-	Cis      = iota
-	D
-	Dis
-	E
-	F
-	Fis
-	G
-	Gis
-	A
-	Ais
-	B
-)
-
-var noteDistanceMap = map[uint8]float64{
-	0:  2.0,               // half notes
-	1:  1.0,               // quarter notes
-	2:  0.5,               // eighths
-	3:  0.25,              // sixteenths
-	4:  0.125,             // 32ths
-	5:  2.0 / 3.0,         // half note tripplets
-	6:  1.0 / 3.0,         // quarter note tripplets
-	7:  0.5 / 3.0,         // eighths tripples
-	8:  0.25 / 3.0,        // sixteenths tripples
-	9:  0.125 / 3.0,       // 32ths tripples
-	10: 1.0 * 3.0 / 2.0,   // dotted quarter notes
-	11: 0.5 * 3.0 / 2.0,   // dotted eighths
-	12: 0.25 * 3.0 / 2.0,  // dotted sixteenths
-	13: 0.125 * 3.0 / 2.0, // dotted 32ths
-	14: 1.0 / 5.0,         // quarter note quintuplets
-	15: 0.5 / 5.0,         // eighths quintuplets
-}
-
 // calcNextNote calculates the next note that will be played
 func (a *Arp) calcNextNote() (key, velocity uint8) {
 	//fmt.Printf("calcNextNote\n")
@@ -89,33 +53,70 @@ func (a *Arp) calcNextNote() (key, velocity uint8) {
 
 	defer a.Unlock("calcNextNote")
 
-	//fmt.Printf("direction is %v\n", dir)
-
-	/*
-		if dir == 0 { // repetition
-			if lastNote == 0 {
-				lastNote = startkey
-			}
-			vel := vels[note(lastNote%12)]
-
-			if lastNote == startkey {
-				vel = startVel
-			}
-
-			//fmt.Printf("note (repeat) is %v\n", lastNote)
-
-			return lastNote, vel
-		}
-	*/
-
 	var notePool []int // = make([]int, len(notes)+1)
-	notePool = append(notePool, int(startkey%12))
 
 	for nt, ok := range notes {
 		if ok && int(uint8(nt)) != int(startkey%12) {
 			notePool = append(notePool, int(uint8(nt)))
 		}
 	}
+
+	//fmt.Printf("direction is %v\n", dir)
+
+	if len(notePool) == 0 { // repetition
+		return startkey, startVel
+	}
+
+	if len(notePool) == 1 && notePool[0] == int(startkey%12) {
+		switch dir {
+		case true:
+			var nextNote int
+			if lastNote == 0 {
+				nextNote = int(startkey)
+				velocity = startVel
+			} else {
+				nextNote = int(lastNote + 12)
+				velocity = vels[0]
+			}
+
+			if nextNote > (127 - int(startkey%12)) {
+				//a.Lock("calcNextNote: begin with startKey")
+				nextNote = int(startkey)
+				a.lastNote = startkey
+				//a.Unlock("calcNextNote: begin with startKey")
+			}
+
+			//fmt.Printf("note (up) is %v\n", nextNote)
+			return uint8(nextNote), velocity
+		case false:
+			var nextNote int
+			if lastNote == 0 {
+				nextNote = int(startkey)
+				velocity = startVel
+			} else {
+				nextNote = int(lastNote) - 12
+				velocity = vels[0]
+			}
+
+			if nextNote < int(startkey%12) {
+				//a.Lock("calcNextNote: begin with startKey")
+				nextNote = int(startkey)
+				a.lastNote = startkey
+				//a.Unlock("calcNextNote: begin with startKey")
+			}
+
+			if nextNote < 0 {
+				nextNote = 0
+			}
+
+			//fmt.Printf("note (down) is %v\n", nextNote)
+			return uint8(nextNote), velocity
+		default:
+			panic("unreachable")
+		}
+	}
+
+	notePool = append(notePool, int(startkey%12))
 
 	sort.Ints(notePool)
 
@@ -227,242 +228,17 @@ type Arp struct {
 	styleHandler           func(midi.Message) (val uint8, ok bool)
 }
 
-type Option func(a *Arp)
-
-// NotePoolOctave sets the octave that defines the note pool, instead of the starting note
-func NotePoolOctave(oct uint8) Option {
-	return func(a *Arp) {
-		a.notePoolOctave = oct
-	}
-}
-
-// CCDirectionSwitch sets the controller for the direction switch
-func CCDirectionSwitch(controller uint8) Option {
-	return func(a *Arp) {
-		a.directionSwitchHandler = func(msg midi.Message) (down bool, ok bool) {
-			cc, is := msg.(channel.ControlChange)
-
-			if !is || cc.Controller() != controller {
-				return
-			}
-
-			ch := a.ControlChannel()
-			if ch >= 0 && uint8(ch) != cc.Channel() {
-				return
-			}
-
-			return cc.Value() > 0, true
-		}
-	}
-}
-
-// NoteDirectionSwitch sets the key for the direction switch
-func NoteDirectionSwitch(key uint8) Option {
-	return func(a *Arp) {
-		a.directionSwitchHandler = func(msg midi.Message) (down bool, ok bool) {
-			ch := a.ControlChannel()
-			switch v := msg.(type) {
-			case channel.NoteOn:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-				down = v.Velocity() > 0
-			case channel.NoteOff:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-			case channel.NoteOffVelocity:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-			}
-			return
-		}
-	}
-}
-
-// CCTimeInterval sets the controller for the time interval
-func CCTimeInterval(controller uint8) Option {
-	return func(a *Arp) {
-		a.noteDistanceHandler = func(msg midi.Message) (dist float64, ok bool) {
-			dist = -1
-			cc, is := msg.(channel.ControlChange)
-
-			if !is || cc.Controller() != controller {
-				return
-			}
-
-			ch := a.ControlChannel()
-			if ch >= 0 && uint8(ch) != cc.Channel() {
-				return
-			}
-
-			ok = true
-			if cc.Value() > 0 {
-				dist = noteDistanceMap[cc.Value()%16]
-			}
-			return
-		}
-	}
-}
-
-// NoteTimeInterval sets the key for the time interval
-func NoteTimeInterval(key uint8) Option {
-	return func(a *Arp) {
-		a.noteDistanceHandler = func(msg midi.Message) (dist float64, ok bool) {
-			dist = -1
-			ch := a.ControlChannel()
-			switch v := msg.(type) {
-			case channel.NoteOn:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-				if v.Velocity() > 0 {
-					dist = noteDistanceMap[v.Velocity()%12]
-				}
-			case channel.NoteOff:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-			case channel.NoteOffVelocity:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-			}
-			return
-		}
-	}
-}
-
-// CCStyle sets the controller for the playing style (staccato, legato, non-legato)
-func CCStyle(controller uint8) Option {
-	return func(a *Arp) {
-		a.styleHandler = func(msg midi.Message) (val uint8, ok bool) {
-			cc, is := msg.(channel.ControlChange)
-
-			if !is || cc.Controller() != controller {
-				return
-			}
-
-			ch := a.ControlChannel()
-			if ch >= 0 && uint8(ch) != cc.Channel() {
-				return
-			}
-
-			ok = true
-			if cc.Value() > 0 {
-				val = cc.Value()
-			}
-			return
-		}
-	}
-}
-
-// NoteStyle sets the key for the playing style (staccato, legato, non-legato)
-func NoteStyle(key uint8) Option {
-	return func(a *Arp) {
-		a.styleHandler = func(msg midi.Message) (val uint8, ok bool) {
-			ch := a.ControlChannel()
-			switch v := msg.(type) {
-			case channel.NoteOn:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-				if v.Velocity() > 0 {
-					val = v.Velocity()
-				}
-			case channel.NoteOff:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-			case channel.NoteOffVelocity:
-				if ch >= 0 && uint8(ch) != v.Channel() {
-					return
-				}
-				if v.Key() != key {
-					return
-				}
-				ok = true
-			}
-			return
-		}
-	}
-}
-
-// ControlChannel sets a separate MIDI channel for the control messages
-func ControlChannel(ch uint8) Option {
-	return func(a *Arp) {
-		if ch < 16 {
-			a.controlchannelIn = int8(ch)
-		}
-	}
-}
-
-// ChannelIn sets the midi channel to listen to (0-15)
-func ChannelIn(ch uint8) Option {
-	return func(a *Arp) {
-		if ch < 16 {
-			a.channelIn = int8(ch)
-		}
-	}
-}
-
-// Transpose sets the transposition for the midi
-func Transpose(halfnotes int8) Option {
-	return func(a *Arp) {
-		a.transpose = halfnotes
-	}
-}
-
-// ChannelOut sets the midi channel to write to
-func ChannelOut(ch uint8) Option {
-	return func(a *Arp) {
-		if ch < 16 {
-			a.channelOut = ch
-		}
-	}
-}
-
 // New returns a new Arp, receiving from the given midi.In port and writing to the given midi.Out port
 func New(in midi.In, out midi.Out, opts ...Option) *Arp {
 	a := &Arp{
-		in:                in,
-		out:               out,
-		notePoolOctave:    0,
-		channelIn:         -1,
-		channelOut:        0,
+		in:  in,
+		out: out,
+
+		notePoolOctave: 0,
+		channelIn:      -1,
+		channelOut:     0,
+		tempoBPM:       120.00,
+
 		start:             make(chan [2]uint8, 100),
 		stop:              make(chan bool),
 		stopped:           make(chan bool),
@@ -474,9 +250,9 @@ func New(in midi.In, out midi.Out, opts ...Option) *Arp {
 		finishListener:    make(chan bool),
 		finishedScheduler: make(chan bool),
 		finishedListener:  make(chan bool),
-		//playnotes:         make(chan playnote),
-		//stopPlaynotes:     make(chan bool),
 	}
+
+	a.Reset()
 
 	CCDirectionSwitch(cc.GeneralPurposeButton1Switch)(a)
 	CCTimeInterval(cc.GeneralPurposeSlider1)(a)
@@ -486,7 +262,6 @@ func New(in midi.In, out midi.Out, opts ...Option) *Arp {
 		opt(a)
 	}
 
-	a.Reset()
 	return a
 }
 
@@ -501,7 +276,6 @@ func (a *Arp) Reset() {
 	a.Lock("Reset")
 	a.notes = map[note]bool{}
 	a.noteVelocities = map[note]uint8{}
-	a.tempoBPM = 120.00
 	a.noteDistance = 0.5
 	a.directionUp = true
 	a.runningNote = -1
@@ -692,15 +466,6 @@ func (a *Arp) _calcNoteLen() time.Duration {
 
 	return time.Duration(int(math.Round(l))) * time.Microsecond
 }
-
-/*
-type playnote struct {
-	key      uint8
-	velocity uint8
-	dur      time.Duration
-	wait     time.Duration
-}
-*/
 
 func (a *Arp) scheduleNoteOff(k uint8, l time.Duration) {
 	//	fmt.Printf("scheduling note off %v\n", k)
@@ -1018,9 +783,6 @@ func (a *Arp) Run() error {
 	)
 	a.Unlock("Run")
 	a.play()
-	//time.Sleep(20 * time.Millisecond)
-	//a.calcNoteDistance()
-	//a.calcNoteLen()
 	go rd.ListenTo(a.in)
 	return nil
 }

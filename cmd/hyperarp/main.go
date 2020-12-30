@@ -19,6 +19,7 @@ var (
 	inArg                = CONFIG.NewInt32("in", "number of the input device", config.Required, config.Shortflag('i'))
 	outArg               = CONFIG.NewInt32("out", "number of the output device", config.Required, config.Shortflag('o'))
 	transposeArg         = CONFIG.NewInt32("transpose", "transpose (half notes)", config.Default(int32(0)), config.Shortflag('t'))
+	tempoArg             = CONFIG.NewFloat32("tempo", "tempo (BPM)", config.Default(float32(120.0)), config.Shortflag('b'))
 	ccDirectionSwitchArg = CONFIG.NewInt32("ccdir", "controller for the direction switch", config.Default(int32(cc.GeneralPurposeButton1Switch)))
 	ccTimeIntervalArg    = CONFIG.NewInt32("cctiming", "controller for the timing interval", config.Default(int32(cc.GeneralPurposeSlider1)))
 	ccStyleArg           = CONFIG.NewInt32("ccstyle", "controller for the playing style (staccato, non-legato, legato)", config.Default(int32(cc.GeneralPurposeSlider2)))
@@ -90,6 +91,7 @@ func run() error {
 		hyperarp.CCDirectionSwitch(uint8(ccDirectionSwitchArg.Get())),
 		hyperarp.CCTimeInterval(uint8(ccTimeIntervalArg.Get())),
 		hyperarp.CCStyle(uint8(ccStyleArg.Get())),
+		hyperarp.Tempo(float64(tempoArg.Get())),
 	}
 
 	if noteDirectionSwitchArg.IsSet() {

@@ -16,21 +16,21 @@ import (
 var CONFIG = config.MustNew("hyperarp", hyperarp.VERSION, "hyper arpeggiator")
 
 var (
-	inArg                = CONFIG.NewInt32("in", "number of the input device", config.Required, config.Shortflag('i'))
-	outArg               = CONFIG.NewInt32("out", "number of the output device", config.Required, config.Shortflag('o'))
-	transposeArg         = CONFIG.NewInt32("transpose", "transpose (half notes)", config.Default(int32(0)), config.Shortflag('t'))
+	inArg                = CONFIG.NewInt32("in", "number of the input MIDI port (use hyperarp list to see the available MIDI ports)", config.Required, config.Shortflag('i'))
+	outArg               = CONFIG.NewInt32("out", "number of the output MIDI port (use hyperarp list to see the available MIDI ports)", config.Required, config.Shortflag('o'))
+	transposeArg         = CONFIG.NewInt32("transpose", "transpose (number of semitones)", config.Default(int32(0)), config.Shortflag('t'))
 	tempoArg             = CONFIG.NewFloat32("tempo", "tempo (BPM)", config.Default(float32(120.0)), config.Shortflag('b'))
-	ccDirectionSwitchArg = CONFIG.NewInt32("ccdir", "controller for the direction switch", config.Default(int32(cc.GeneralPurposeButton1Switch)))
-	ccTimeIntervalArg    = CONFIG.NewInt32("cctiming", "controller for the timing interval", config.Default(int32(cc.GeneralPurposeSlider1)))
-	ccStyleArg           = CONFIG.NewInt32("ccstyle", "controller for the playing style (staccato, non-legato, legato)", config.Default(int32(cc.GeneralPurposeSlider2)))
+	ccDirectionSwitchArg = CONFIG.NewInt32("ccdir", "controller number for the direction switch", config.Default(int32(cc.GeneralPurposeButton1Switch)))
+	ccTimeIntervalArg    = CONFIG.NewInt32("cctiming", "controller number to set the timing interval", config.Default(int32(cc.GeneralPurposeSlider1)))
+	ccStyleArg           = CONFIG.NewInt32("ccstyle", "controller number to select the playing style (staccato, non-legato, legato)", config.Default(int32(cc.GeneralPurposeSlider2)))
 
-	noteDirectionSwitchArg = CONFIG.NewInt32("notedir", "note for the direction switch")
-	noteTimeIntervalArg    = CONFIG.NewInt32("notetiming", "note for the timing interval")
-	noteStyleArg           = CONFIG.NewInt32("notestyle", "note for the playing style (staccato, non-legato, legato)")
+	noteDirectionSwitchArg = CONFIG.NewInt32("notedir", "note (key) for the direction switch")
+	noteTimeIntervalArg    = CONFIG.NewInt32("notetiming", "note (key) for the timing interval")
+	noteStyleArg           = CONFIG.NewInt32("notestyle", "note (key) for the playing style (staccato, non-legato, legato)")
 
-	controlChannelArg = CONFIG.NewInt32("ctrlch", "separate channel for control messages")
+	controlChannelArg = CONFIG.NewInt32("ctrlch", "channel for control messages (only needed if not the same as the input channel")
 
-	listCmd = CONFIG.MustCommand("list", "list devices").Skip("in").Skip("out").Skip("transpose").Skip("tempo").Skip("ccdir").Skip("cctiming").Skip("ccstyle").Skip("notedir").Skip("notetiming").Skip("notestyle")
+	listCmd = CONFIG.MustCommand("list", "show the available MIDI ports").Skip("in").Skip("out").Skip("transpose").Skip("tempo").Skip("ccdir").Skip("cctiming").Skip("ccstyle").Skip("notedir").Skip("notetiming").Skip("notestyle").Skip("ctrlch")
 )
 
 func main() {

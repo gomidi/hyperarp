@@ -30,7 +30,7 @@ var (
 
 	controlChannelArg = CONFIG.NewInt32("ctrlch", "separate channel for control messages")
 
-	listCmd = CONFIG.MustCommand("list", "list devices").Relax("in").Relax("out")
+	listCmd = CONFIG.MustCommand("list", "list devices").Skip("in").Skip("out").Skip("transpose").Skip("tempo").Skip("ccdir").Skip("cctiming").Skip("ccstyle").Skip("notedir").Skip("notetiming").Skip("notestyle")
 )
 
 func main() {

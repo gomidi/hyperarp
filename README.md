@@ -8,7 +8,7 @@ Note: If you are reading this on Github, please note that the repo is located at
 
 ## Installation
 
-    go get -u gitlab.com/gomidi/hyperarp/cmd/hyperarp
+    go install gitlab.com/gomidi/hyperarp
 
 ## Usage
 

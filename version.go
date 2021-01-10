@@ -1,2 +1,3 @@
-package hyperarp
-const VERSION="0.0.15"
+package main
+
+const VERSION = "0.0.15"

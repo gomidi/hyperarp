@@ -7,13 +7,13 @@ import (
 
 	driver "gitlab.com/gomidi/rtmididrv"
 
-	"gitlab.com/gomidi/hyperarp"
+	hyperarp "gitlab.com/gomidi/hyperarp/lib"
 	"gitlab.com/gomidi/midi"
 	"gitlab.com/gomidi/midi/cc"
 	config "gitlab.com/metakeule/config"
 )
 
-var CONFIG = config.MustNew("hyperarp", hyperarp.VERSION, "hyper arpeggiator")
+var CONFIG = config.MustNew("hyperarp", VERSION, "hyper arpeggiator")
 
 var (
 	inArg                = CONFIG.NewInt32("in", "number of the input MIDI port (use hyperarp list to see the available MIDI ports)", config.Required, config.Shortflag('i'))

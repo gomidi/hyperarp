@@ -9,6 +9,8 @@ Note: If you are reading this on Github, please note that the repo is located at
 ## Installation
 
     go install gitlab.com/gomidi/hyperarp
+    
+or download the binaries at https://github.com/gomidi/hyperarp/releases/tag/v0.0.18
 
 ## Usage
 
